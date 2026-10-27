@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz Financeiro</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Inter:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root { --y: #FFD21F; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 20px; color: #f4f0e4;
+    background: radial-gradient(ellipse at 50% 20%, #221b04, #060605 75%); font: 500 16px/1.4 Inter, system-ui, sans-serif; }
+  main { width: min(420px, 100%); text-align: center; }
+  h1 { font: 400 34px/1.15 "Instrument Serif", Georgia, serif; margin: 0 0 8px; }
+  p { color: #b8b3a4; margin: 0 0 18px; }
+  input, button { width: 100%; font: inherit; color: #f4f0e4; padding: 16px; margin-bottom: 12px; border-radius: 14px;
+    border: 1.5px solid rgba(255, 210, 31, .5); background: rgba(255, 255, 255, .05); }
+  button { font-weight: 700; cursor: pointer; }
+  .g { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .g button { font: 400 48px "Instrument Serif", Georgia, serif; padding: 34px 0; margin: 0; }
+  .g button:active { background: rgba(255, 210, 31, .3); }
+  .ok { color: var(--y); } .no { color: #d9534f; }
+</style>
+</head>
+<body>
+<main id="m"></main>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+const FB = {
+  apiKey: "AIzaSyAcLMd4PMBYYh2xCaSC9Sa6LfSFJ30XKoU",
+  authDomain: "ensino-financeiro.firebaseapp.com",
+  databaseURL: "https://ensino-financeiro-default-rtdb.firebaseio.com",
+  projectId: "ensino-financeiro",
+  storageBucket: "ensino-financeiro.firebasestorage.app",
+  messagingSenderId: "489180248179",
+  appId: "1:489180248179:web:74a628852b4a7844fe5206"
+};
+const m = document.getElementById('m');
+const room = (new URLSearchParams(location.search).get('s') || '').toUpperCase();
+const ready = window.firebase && FB.databaseURL && room;
+const K = 'qf_' + room;
+let me = null;
+try { me = JSON.parse(localStorage.getItem(K)); } catch (e) {}
+const show = (t, p, h) => { m.innerHTML = '<h1>' + t + '</h1><p>' + (p || '') + '</p>' + (h || ''); };
+let ref;
+if (ready) { firebase.initializeApp(FB); ref = firebase.database().ref('rooms/' + room); }
+
+function ask(msg) {
+  show('Quiz Financeiro', msg || 'Escolha um apelido para entrar na sala ' + room + '.',
+    '<input id="nm" maxlength="14" placeholder="Seu apelido" autocomplete="off"><button onclick="join()">ENTRAR</button>');
+}
+async function join() {
+  const n = document.getElementById('nm').value.trim().slice(0, 14);
+  if (!n) return;
+  try {
+    if (Object.keys((await ref.child('players').once('value')).val() || {}).length >= 30) return ask('Sala cheia (30 jogadores).');
+    me = { id: 'p' + Math.random().toString(36).slice(2, 10), n };
+    await ref.child('players/' + me.id).set(n);
+  } catch (e) { return ask('Não foi possível entrar. Tente de novo.'); }
+  try { localStorage.setItem(K, JSON.stringify(me)); } catch (e) {}
+  watch();
+}
+async function vote(q, j) {
+  m.querySelectorAll('button').forEach(b => b.disabled = true);
+  try { await ref.child('votes/' + q + '/' + me.id).set(j); show('Resposta enviada', 'Você marcou ' + 'ABCD'[j] + '. Aguarde o telão.'); }
+  catch (e) { show('Ops', 'Falha ao enviar. Aguarde a próxima pergunta.'); }
+}
+function watch() {
+  ref.child('s').on('value', async s => {
+    const S = s.val();
+    if (!S) return show('Olá, ' + me.n, 'Aguardando o host abrir a sala…');
+    if (S.ph === 'lobby') return show('Você está dentro, ' + me.n + '!', 'Aguarde o início do quiz no telão.');
+    if (S.ph === 'end') return show('Fim de jogo!', 'Veja o ranking no telão.');
+    const v = (await ref.child('votes/' + S.qi + '/' + me.id).once('value')).val();
+    if (S.ph === 'q') {
+      if (v !== null) return show('Resposta enviada', 'Você marcou ' + 'ABCD'[v] + '. Aguarde o telão.');
+      show('Pergunta ' + (S.qi + 1), 'Escolha sua resposta',
+        '<div class="g">' + 'ABCD'.split('').map((l, j) => '<button onclick="vote(' + S.qi + ',' + j + ')">' + l + '</button>').join('') + '</div>');
+    } else {
+      const r = v === null ? ['Sem resposta', 'no'] : v === S.c ? ['Acertou!', 'ok'] : ['Errou', 'no'];
+      show('<span class="' + r[1] + '">' + r[0] + '</span>', 'Resposta certa: ' + 'ABCD'[S.c] + '. Olhe o telão.');
+    }
+  });
+}
+if (!ready) show('Quiz Financeiro', 'Leia o QR code no telão para entrar.');
+else if (me && me.id) watch();
+else ask();
+</script>
+</body>
+</html>
